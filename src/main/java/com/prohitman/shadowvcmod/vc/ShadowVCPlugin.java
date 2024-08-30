@@ -3,26 +3,19 @@ package com.prohitman.shadowvcmod.vc;
 import com.prohitman.shadowvcmod.config.ServerConfig;
 import com.prohitman.shadowvcmod.entity.VCZombieEntity;
 import de.maxhenkel.voicechat.api.*;
-import de.maxhenkel.voicechat.api.events.EventRegistration;
-import de.maxhenkel.voicechat.api.events.MicrophonePacketEvent;
-import de.maxhenkel.voicechat.api.events.VoicechatServerStartedEvent;
+import de.maxhenkel.voicechat.api.events.*;
 import de.maxhenkel.voicechat.api.opus.OpusDecoder;
 import net.minecraft.server.level.ServerPlayer;
 
 import javax.annotation.Nullable;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 @ForgeVoicechatPlugin
 public class ShadowVCPlugin implements VoicechatPlugin {
-    public static VoicechatApi voicechatApi;
-    private static ConcurrentHashMap<UUID, Long> cooldowns;
-
-    @Nullable
-    public static VoicechatServerApi voicechatServerApi;
-
-    @Nullable
-    private OpusDecoder decoder;
+    public static final Map<UUID, OpusDecoder> playerDecoders = new HashMap<>();
 
     @Override
     public String getPluginId() {
@@ -31,18 +24,13 @@ public class ShadowVCPlugin implements VoicechatPlugin {
 
     @Override
     public void initialize(VoicechatApi api) {
-        voicechatApi = api;
-        cooldowns = new ConcurrentHashMap<>();
     }
 
     @Override
     public void registerEvents(EventRegistration registration) {
-        registration.registerEvent(VoicechatServerStartedEvent.class, this::onServerStarted);
+        registration.registerEvent(PlayerConnectedEvent.class, this::onPlayerConnected);
+        registration.registerEvent(PlayerDisconnectedEvent.class, this::onPlayerDisconnected);
         registration.registerEvent(MicrophonePacketEvent.class, this::onMicPacket);
-    }
-
-    private void onServerStarted(VoicechatServerStartedEvent event) {
-        voicechatServerApi = event.getVoicechat();
     }
 
     private void onMicPacket(MicrophonePacketEvent event) {
@@ -69,7 +57,6 @@ public class ShadowVCPlugin implements VoicechatPlugin {
         }
 
         if (!(senderConnection.getPlayer().getPlayer() instanceof ServerPlayer player)) {
-            //VoicechatInteraction.LOGGER.warn("Received microphone packets from non-player");
             return;
         }
 
@@ -79,24 +66,28 @@ public class ShadowVCPlugin implements VoicechatPlugin {
             }
         }
 
+        OpusDecoder decoder = playerDecoders.get(player.getUUID());
+
         if (decoder == null) {
-            decoder = event.getVoicechat().createDecoder();
+            return;
         }
 
         decoder.resetState();
+
         short[] decoded = decoder.decode(event.getPacket().getOpusEncodedData());
 
         double audioLevel = AudioUtils.calculateAudioLevel(decoded);
 
-        //double minSuspicionLevel = ServerConfig.minSuspicionActivationThreshold.get().doubleValue();
         double minDecibelThreshold = ServerConfig.minDecibelThreshold.get().doubleValue();
+
         int detectionRange = ServerConfig.minDetectionRange.get();
 
         if(audioLevel < minDecibelThreshold){
+            //Don't trigger anything when the audioLevel is below the threshold
             return;
         } else {
             detectionRange += convertDecibelToRange(audioLevel);
-            System.out.println("Sound heard, detection range: " + detectionRange);
+            //System.out.println("Sound heard, calculated detection range: " + detectionRange);
         }
 
         int finalDetectionRange = detectionRange;
@@ -109,33 +100,6 @@ public class ShadowVCPlugin implements VoicechatPlugin {
                     zombie.setTarget(player);
                 }
             }
-            /*boolean isSuspicious = false;
-            boolean shouldTarget = false;
-
-            if (audioLevel < minSuspicionLevel) {
-                System.out.println("Voice too low");
-                return;
-            }
-            else if(minSuspicionLevel < audioLevel && audioLevel < minTargetLevel){
-                System.out.println("Voice reached suspicion level");
-                isSuspicious = true;
-            } else if(minTargetLevel < audioLevel){
-                System.out.println("Voice too loud");
-                shouldTarget = true;
-            }
-
-            List<VCZombieEntity> vczombies;
-            vczombies = player.level.getEntitiesOfClass(VCZombieEntity.class, player.getBoundingBox().inflate(ServerConfig.minDetectionRange.get()));
-
-            if(!vczombies.isEmpty()){
-                for(VCZombieEntity entity : vczombies){
-                    if(isSuspicious){
-                        entity.setSuspicionPos(player.getOnPos().above());//Add go to sus pos goal
-                    } else if(shouldTarget){
-                        entity.setTarget(player);//Add Code to remember targets, and check for isAlive
-                    }
-                }
-            }*/
         });
     }
 
@@ -154,5 +118,26 @@ public class ShadowVCPlugin implements VoicechatPlugin {
         int detectionRange = Math.round(normalizedValue * 32);
 
         return Math.min(detectionRange, 32);
+    }
+
+    private void onPlayerConnected(PlayerConnectedEvent event) {
+        VoicechatServerApi api = event.getVoicechat();
+        VoicechatConnection connection = event.getConnection();
+        de.maxhenkel.voicechat.api.ServerPlayer player = connection.getPlayer();
+        UUID uuid = player.getUuid();
+
+        OpusDecoder decoder = playerDecoders.computeIfAbsent(uuid, k -> api.createDecoder());
+        playerDecoders.putIfAbsent(uuid, decoder);
+    }
+
+    private void onPlayerDisconnected(PlayerDisconnectedEvent event) {
+        UUID uuid = event.getPlayerUuid();
+
+        OpusDecoder decoder = playerDecoders.getOrDefault(uuid, null);
+        if (decoder != null) {
+            decoder.close();
+        }
+
+        playerDecoders.remove(uuid);
     }
 }

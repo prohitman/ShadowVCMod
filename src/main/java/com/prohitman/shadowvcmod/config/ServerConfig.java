@@ -8,10 +8,7 @@ public class ServerConfig {
     public static final ForgeConfigSpec.BooleanValue groupInteraction;
     public static final ForgeConfigSpec.BooleanValue whisperInteraction;
     public static final ForgeConfigSpec.BooleanValue sneakInteraction;
-    //public static final ForgeConfigSpec.IntValue voiceSculkFrequency;
-    //public static final ForgeConfigSpec.IntValue minSuspicionActivationThreshold;
     public static final ForgeConfigSpec.IntValue minDecibelThreshold;
-
     public static final ForgeConfigSpec.IntValue minDetectionRange;
 
 
@@ -29,12 +26,6 @@ public class ServerConfig {
 
         sneakInteraction = COMMON_BUILDER.comment("If talking while sneaking should trigger the VC mob")
                 .define("sneak_interaction", true);
-
-        //voiceSculkFrequency = COMMON_BUILDER.comment("The frequency of the voice vibration")
-        //        .defineInRange("voice_sculk_frequency", 7, 1, 15);
-
-       // minSuspicionActivationThreshold = COMMON_BUILDER.comment("The audio level threshold where the vc mob detects the voice player's location in dB")
-       //         .defineInRange("minimum_suspicion_threshold", -60, -127, 0);
 
         minDecibelThreshold = COMMON_BUILDER.comment("The audio level threshold where the vc mob targets the voice player in dB, should be higher than the suspicion threshold.")
                         .defineInRange("minimum_target_threshold", -60, -127, 0);

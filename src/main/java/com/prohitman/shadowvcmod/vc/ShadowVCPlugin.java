@@ -89,20 +89,26 @@ public class ShadowVCPlugin implements VoicechatPlugin {
         double audioLevel = AudioUtils.calculateAudioLevel(decoded);
 
         //double minSuspicionLevel = ServerConfig.minSuspicionActivationThreshold.get().doubleValue();
-        double minTargetLevel = ServerConfig.minTargetActivationThreshold.get().doubleValue();
-        int minDetectionRange = ServerConfig.minDetectionRange.get();
+        double minDecibelThreshold = ServerConfig.minDecibelThreshold.get().doubleValue();
+        int detectionRange = ServerConfig.minDetectionRange.get();
 
-        if(audioLevel < minTargetLevel){
+        if(audioLevel < minDecibelThreshold){
             return;
         } else {
-
+            detectionRange += convertDecibelToRange(audioLevel);
+            System.out.println("Sound heard, detection range: " + detectionRange);
         }
 
+        int finalDetectionRange = detectionRange;
         player.getLevel().getServer().execute(() -> {
             List<VCZombieEntity> vczombies;
 
-            vczombies = player.level.getEntitiesOfClass(VCZombieEntity.class, player.getBoundingBox().inflate(ServerConfig.minDetectionRange.get()));
-
+            vczombies = player.level.getEntitiesOfClass(VCZombieEntity.class, player.getBoundingBox().inflate(finalDetectionRange));
+            if(!vczombies.isEmpty()){
+                for(VCZombieEntity zombie : vczombies){
+                    zombie.setTarget(player);
+                }
+            }
             /*boolean isSuspicious = false;
             boolean shouldTarget = false;
 
@@ -131,5 +137,22 @@ public class ShadowVCPlugin implements VoicechatPlugin {
                 }
             }*/
         });
+    }
+
+    public int convertDecibelToRange(double decibel) {
+        int minDecibelThreshold = ServerConfig.minDecibelThreshold.get();
+        if (decibel > 0 || decibel < -127) {
+            throw new IllegalArgumentException("Decibel value must be between -127 and 0.");
+        }
+
+        if (decibel < minDecibelThreshold) {
+            return 0;
+        }
+
+        float normalizedValue = (float)(decibel - minDecibelThreshold) / (-minDecibelThreshold);
+
+        int detectionRange = Math.round(normalizedValue * 32);
+
+        return Math.min(detectionRange, 32);
     }
 }
